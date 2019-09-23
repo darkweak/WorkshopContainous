@@ -1,0 +1,12 @@
+version: '3.4'
+
+services:
+  traefik:
+    image: traefik:v2.0
+    command: --providers.docker
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: ${NETWORKS}

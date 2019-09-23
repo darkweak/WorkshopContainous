@@ -1,0 +1,35 @@
+version: '3.4'
+
+services:
+  traefik:
+    image: traefik:v2.0
+    ports:
+      - "80:80"
+      - "8080:8080"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./traefik.toml:/etc/traefik/traefik.toml
+      - ./log:/var/log
+#      - ./acme.json:/acme.json
+    networks:
+      - api_platform_1
+
+  fail2ban:
+    image: alpine:latest
+    build:
+      context: .
+      dockerfile: ./Dockerfile-fail2ban
+    env_file:
+      - ./fail2ban.env
+    network_mode: "host"
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - ./log:/var/log:ro
+      - ./data:/data
+
+networks:
+  api_platform_1:
+    external: true

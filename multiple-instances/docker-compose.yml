@@ -1,0 +1,107 @@
+version: '3.4'
+
+x-cache:
+  &cache
+  cache_from:
+    - ${CONTAINER_REGISTRY_BASE}/php
+    - ${CONTAINER_REGISTRY_BASE}/nginx
+    - ${CONTAINER_REGISTRY_BASE}/varnish
+
+services:
+  traefik:
+    image: traefik:v2.0
+    command: --api.insecure --providers.docker
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"
+
+  php:
+    image: ${CONTAINER_REGISTRY_BASE}/php
+    build:
+      context: ${BASE_APP}/api
+      target: api_platform_php
+      <<: *cache
+    depends_on:
+      - db
+    volumes:
+      - ${BASE_APP}/api:/srv/api:rw,cached
+
+  api:
+    image: ${CONTAINER_REGISTRY_BASE}/nginx
+    build:
+      context: ${BASE_APP}/api
+      target: api_platform_nginx
+      <<: *cache
+    depends_on:
+      - php
+    volumes:
+      - ${BASE_APP}/api/public:/srv/api/public:ro
+    labels:
+      - traefik.http.routers.api.rule=Host(`api.${DOMAIN_NAME}`)
+
+  cache-proxy:
+    image: ${CONTAINER_REGISTRY_BASE}/varnish
+    build:
+      context: ${BASE_APP}/api
+      target: api_platform_varnish
+      <<: *cache
+    depends_on:
+      - api
+    volumes:
+      - ${BASE_APP}/api/docker/varnish/conf:/usr/local/etc/varnish:ro
+    tmpfs:
+      - /usr/local/var/varnish:exec
+    labels:
+      - traefik.http.routers.cache-proxy.rule=Host(`cache.${DOMAIN_NAME}`)
+
+  db:
+    image: postgres:10-alpine
+    environment:
+      - POSTGRES_DB=api
+      - POSTGRES_USER=api-platform
+      - POSTGRES_PASSWORD=!ChangeMe!
+    volumes:
+      - db-data:/var/lib/postgresql/data:rw
+
+  mercure:
+    image: dunglas/mercure
+    environment:
+      - JWT_KEY=!ChangeMe!
+      - ALLOW_ANONYMOUS=1
+      - CORS_ALLOWED_ORIGINS=*
+      - PUBLISH_ALLOWED_ORIGINS=http://(www\.)?${DOMAIN_NAME}
+      - DEMO=1
+    labels:
+      - traefik.http.routers.mercure.rule=Host(`mercure.${DOMAIN_NAME}`)
+
+  client:
+    image: ${CONTAINER_REGISTRY_BASE}/client
+    build:
+      context: ${BASE_APP}/client
+      cache_from:
+        - ${CONTAINER_REGISTRY_BASE}/client
+    env_file:
+      - ${BASE_APP}/client/.env
+    volumes:
+      - ${BASE_APP}/client:/usr/src/client:rw,cached
+      - ${BASE_APP}/client/node_modules:/usr/src/client/node_modules
+    labels:
+      - traefik.http.routers.client.rule=Host(`${DOMAIN_NAME}`, `www.${DOMAIN_NAME}`)
+
+  admin:
+    image: ${CONTAINER_REGISTRY_BASE}/admin
+    build:
+      context: ${BASE_APP}/admin
+      cache_from:
+        - ${CONTAINER_REGISTRY_BASE}/admin
+    volumes:
+      - ${BASE_APP}/admin:/usr/src/admin:rw,cached
+      - ${BASE_APP}/admin/node_modules:/usr/src/admin/node_modules
+    labels:
+      - traefik.http.routers.admin.rule=Host(`admin.${DOMAIN_NAME}`)
+
+volumes:
+  db-data: {}
