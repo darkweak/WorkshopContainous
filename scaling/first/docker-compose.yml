@@ -11,6 +11,10 @@ x-react-env:
     environment:
       - REACT_APP_API_ENTRYPOINT=${HTTP_OR_SSL}api.${DOMAIN_NAME}
 
+x-networks: &networks
+  networks:
+    - api_platform_1
+
 services:
   php:
     build:
@@ -28,6 +32,7 @@ services:
     volumes:
       - ${FOLDER_LOCATION}/api:/srv/api:rw,cached
       - ${FOLDER_LOCATION}/api/docker/php/conf.d/api-platform.dev.ini/:/usr/local/etc/php/conf.d/api-platform.ini
+    <<: *networks
 
   api:
     build:
@@ -41,6 +46,7 @@ services:
       - ${FOLDER_LOCATION}/api/public:/srv/api/public:ro
     labels:
       - traefik.http.routers.api-${APP_FOLDER}.rule=Host(`api.${DOMAIN_NAME}`)
+    <<: *networks
 
   db:
     image: postgres:10-alpine
@@ -52,6 +58,7 @@ services:
       - db-data:/var/lib/postgresql/data:rw
     labels:
       - traefik.http.routers.db-${APP_FOLDER}.rule=Host(`db.${DOMAIN_NAME}`)
+    <<: *networks
 
   mercure:
     image: dunglas/mercure
@@ -63,6 +70,7 @@ services:
       - PUBLISH_ALLOWED_ORIGINS=${HTTP_OR_SSL}mercure.${DOMAIN_NAME}
     labels:
       - traefik.http.routers.mercure-${APP_FOLDER}.rule=Host(`mercure.${DOMAIN_NAME}`)
+    <<: *networks
 
   client:
     build:
@@ -76,6 +84,7 @@ services:
       - ${FOLDER_LOCATION}/client:/usr/src/client:rw,cached
     labels:
       - traefik.http.routers.client-${APP_FOLDER}.rule=HostRegexp(`{subdomains:(www.)?}${DOMAIN_NAME}`)
+    <<: *networks
 
   admin:
     build:
@@ -89,6 +98,11 @@ services:
       - ${FOLDER_LOCATION}/admin:/usr/src/admin:rw,cached
     labels:
       - traefik.http.routers.admin-${APP_FOLDER}.rule=Host(`admin.${DOMAIN_NAME}`)
+    <<: *networks
 
 volumes:
   db-data: {}
+
+networks:
+  api_platform_multiple_1:
+    external: true
