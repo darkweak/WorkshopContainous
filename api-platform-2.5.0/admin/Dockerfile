@@ -27,6 +27,8 @@ COPY . ./
 
 VOLUME /usr/src/admin/node_modules
 
+EXPOSE 3000
+
 CMD ["yarn", "start"]
 
 

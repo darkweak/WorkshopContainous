@@ -9,8 +9,7 @@ x-cache:
 
 x-networks: &networks
   networks:
-    api_platform_1:
-      external: true
+    - api_platform_1
 
 x-react-env: &react-env
   environment:
@@ -20,7 +19,7 @@ services:
   php:
     image: ${CONTAINER_REGISTRY_BASE}/php
     build:
-      context: ${base_app}/api
+      context: ${BASE_APP}/api
       target: api_platform_php
       <<: *cache
     depends_on:
@@ -31,37 +30,37 @@ services:
       - CORS_ALLOW_ORIGIN=^((${HTTP_OR_SSL}(${SUBDOMAINS_LIST}.)?${DOMAINS})|api)$$
       - DATABASE_URL=postgres://${DB_USER}:${DB_PASS}@db/${DB_NAME}
     volumes:
-      - ${base_app}/api:/srv/api:rw,cached
+      - ${BASE_APP}/api:/srv/api:rw,cached
     <<: *networks
 
   api:
     image: ${CONTAINER_REGISTRY_BASE}/nginx
     build:
-      context: ${base_app}/api
+      context: ${BASE_APP}/api
       target: api_platform_nginx
       <<: *cache
     depends_on:
       - php
     volumes:
-      - ${base_app}/api/public:/srv/api/public:ro
+      - ${BASE_APP}/api/public:/srv/api/public:ro
     labels:
-      - traefik.http.routers.api.rule=HostRegexp(`api.{domains:${DOMAINS}}`)
+      - traefik.http.routers.api${FOLDER}.rule=HostRegexp(`api.{domains:${DOMAINS}}`)
     <<: *networks
 
   cache-proxy:
     image: ${CONTAINER_REGISTRY_BASE}/varnish
     build:
-      context: ${base_app}/api
+      context: ${BASE_APP}/api
       target: api_platform_varnish
       <<: *cache
     depends_on:
       - api
     volumes:
-      - ${base_app}/api/docker/varnish/conf:/usr/local/etc/varnish:ro
+      - ${BASE_APP}/api/docker/varnish/conf:/usr/local/etc/varnish:ro
     tmpfs:
       - /usr/local/var/varnish:exec
     labels:
-      - traefik.http.routers.cache-proxy.rule=HostRegexp(`cache.{domains:${DOMAINS}}`)
+      - traefik.http.routers.cache-proxy${FOLDER}.rule=HostRegexp(`cache.{domains:${DOMAINS}}`)
     <<: *networks
 
   db:
@@ -77,17 +76,14 @@ services:
   client:
     image: ${CONTAINER_REGISTRY_BASE}/client
     build:
-      context: ${base_app}/client
+      context: ${BASE_APP}/client
       cache_from:
         - ${CONTAINER_REGISTRY_BASE}/client
     volumes:
-      - ${base_app}/client:/usr/src/client:rw,cached
-      - ${base_app}/client/node_modules:/usr/src/client/node_modules
-    expose:
-      - 3000
+      - ${BASE_APP}/client:/usr/src/client:rw,cached
+      - ${BASE_APP}/client/node_modules:/usr/src/client/node_modules
     labels:
-      - traefik.http.routers.client.rule=HostRegexp(`{subdomains:(www.)?}{domains:${DOMAINS}}`)
-      - traefik.http.services.client.loadbalancer.server.port=3000
+      - traefik.http.routers.client${FOLDER}.rule=HostRegexp(`{subdomains:(www.)?}{domains:${DOMAINS}}`)
     <<: *networks
     <<: *react-env
 
@@ -95,17 +91,14 @@ services:
   admin:
     image: ${CONTAINER_REGISTRY_BASE}/admin
     build:
-      context: ${base_app}/admin
+      context: ${BASE_APP}/admin
       cache_from:
         - ${CONTAINER_REGISTRY_BASE}/admin
     volumes:
-      - ${base_app}/admin:/usr/src/admin:rw,cached
-      - ${base_app}/admin/node_modules:/usr/src/admin/node_modules
-    expose:
-      - 3000
+      - ${BASE_APP}/admin:/usr/src/admin:rw,cached
+      - ${BASE_APP}/admin/node_modules:/usr/src/admin/node_modules
     labels:
-      - traefik.http.routers.admin.rule=HostRegexp(`admin.{domains:${DOMAINS}}`)
-      - traefik.http.services.admin.loadbalancer.server.port=3000
+      - traefik.http.routers.admin${FOLDER}.rule=HostRegexp(`admin.{domains:${DOMAINS}}`)
     <<: *networks
     <<: *react-env
 
