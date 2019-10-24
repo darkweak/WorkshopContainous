@@ -103,7 +103,7 @@ services:
   whoami:
     image: containous/whoami
     labels:
-      - traefik.http.routers.whoami.rule=HostRegexp(`whoami.{domains:${DOMAIN_NAME}}`)
+      - traefik.http.routers.whoami.rule=Host(`whoami.${DOMAIN_NAME}`)
     <<: *networks
 
 volumes:
