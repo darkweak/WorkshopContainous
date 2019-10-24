@@ -12,16 +12,6 @@ x-react-env:
       - REACT_APP_API_ENTRYPOINT=${HTTP_OR_SSL}api.${DOMAIN_NAME}
 
 services:
-  traefik:
-    image: traefik:v2.0
-    command: --api.insecure --providers.docker
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    ports:
-      - "80:80"
-      - "443:443"
-      - "8080:8080"
-
   php:
     build:
       context: ${FOLDER_LOCATION}/api
@@ -50,7 +40,7 @@ services:
     volumes:
       - ${FOLDER_LOCATION}/api/public:/srv/api/public:ro
     labels:
-      - traefik.http.routers.api.rule=Host(`api.${DOMAIN_NAME}`)
+      - traefik.http.routers.api-first.rule=Host(`api.${DOMAIN_NAME}`)
 
   db:
     image: postgres:10-alpine
@@ -61,7 +51,7 @@ services:
     volumes:
       - db-data:/var/lib/postgresql/data:rw
     labels:
-      - traefik.http.routers.db.rule=Host(`db.${DOMAIN_NAME}`)
+      - traefik.http.routers.db-first.rule=Host(`db.${DOMAIN_NAME}`)
 
   mercure:
     image: dunglas/mercure
@@ -72,7 +62,7 @@ services:
       - JWT_KEY=!ChangeMe!
       - PUBLISH_ALLOWED_ORIGINS=${HTTP_OR_SSL}mercure.${DOMAIN_NAME}
     labels:
-      - traefik.http.routers.mercure.rule=Host(`mercure.${DOMAIN_NAME}`)
+      - traefik.http.routers.mercure-first.rule=Host(`mercure.${DOMAIN_NAME}`)
 
   client:
     build:
@@ -85,7 +75,7 @@ services:
     volumes:
       - ${FOLDER_LOCATION}/client:/usr/src/client:rw,cached
     labels:
-      - traefik.http.routers.client.rule=HostRegexp(`{subdomains:(www.)?}${DOMAIN_NAME}`)
+      - traefik.http.routers.client-first.rule=HostRegexp(`{subdomains:(www.)?}${DOMAIN_NAME}`)
 
   admin:
     build:
@@ -98,7 +88,7 @@ services:
     volumes:
       - ${FOLDER_LOCATION}/admin:/usr/src/admin:rw,cached
     labels:
-      - traefik.http.routers.admin.rule=Host(`admin.${DOMAIN_NAME}`)
+      - traefik.http.routers.admin-first.rule=Host(`admin.${DOMAIN_NAME}`)
 
 volumes:
   db-data: {}
