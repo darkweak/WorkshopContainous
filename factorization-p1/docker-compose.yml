@@ -1,11 +1,10 @@
 version: '3.4'
 
-x-cache:
-  &cache
-  cache_from:
-    - ${CONTAINER_REGISTRY_BASE}/php
-    - ${CONTAINER_REGISTRY_BASE}/nginx
-    - ${CONTAINER_REGISTRY_BASE}/varnish
+x-cache-from:
+  - &api-cache-from
+    cache_from:
+      - ${NGINX_IMAGE:-quay.io/api-platform/nginx}
+      - ${PHP_IMAGE:-quay.io/api-platform/php}
 
 services:
   traefik:
@@ -19,93 +18,79 @@ services:
       - "8080:8080"
 
   php:
-    image: ${CONTAINER_REGISTRY_BASE}/php
     build:
-      context: ../api-platform-2.4.6/api
+      context: ../api-platform-2.5.0/api
       target: api_platform_php
-      <<: *cache
+      <<: *api-cache-from
+    image: ${PHP_IMAGE:-quay.io/api-platform/php}
     depends_on:
       - db
     volumes:
-      - ../api-platform-2.4.6/api:/srv/api:rw,cached
+      - ../api-platform-2.5.0/api:/srv/api:rw,cached
+      - ../api-platform-2.5.0/api/docker/php/conf.d/api-platform.dev.ini/:/usr/local/etc/php/conf.d/api-platform.ini
 
   api:
-    image: ${CONTAINER_REGISTRY_BASE}/nginx
     build:
-      context: ../api-platform-2.4.6/api
+      context: ../api-platform-2.5.0/api
       target: api_platform_nginx
-      <<: *cache
+      <<: *api-cache-from
+    image: ${NGINX_IMAGE:-quay.io/api-platform/nginx}
     depends_on:
       - php
     volumes:
-      - ../api-platform-2.4.6/api/public:/srv/api/public:ro
+      - ../api-platform-2.5.0/api/public:/srv/api/public:ro
     labels:
       - traefik.http.routers.api.rule=Host(`api.domain.com`)
-
-  cache-proxy:
-    image: ${CONTAINER_REGISTRY_BASE}/varnish
-    build:
-      context: ../api-platform-2.4.6/api
-      target: api_platform_varnish
-      <<: *cache
-    depends_on:
-      - api
-    volumes:
-      - ../api-platform-2.4.6/api/docker/varnish/conf:/usr/local/etc/varnish:ro
-    tmpfs:
-      - /usr/local/var/varnish:exec
-    labels:
-      - traefik.http.routers.cache-proxy.rule=Host(`cache.domain.com`)
 
   db:
     image: postgres:10-alpine
     environment:
       - POSTGRES_DB=api
-      - POSTGRES_USER=api-platform
       - POSTGRES_PASSWORD=!ChangeMe!
+      - POSTGRES_USER=api-platform
     volumes:
       - db-data:/var/lib/postgresql/data:rw
-    ports:
-      - "5432:5432"
+    labels:
+      - traefik.http.routers.db.rule=Host(`db.domain.com`)
 
   mercure:
     image: dunglas/mercure
     environment:
-      - JWT_KEY=!ChangeMe!
       - ALLOW_ANONYMOUS=1
       - CORS_ALLOWED_ORIGINS=*
-      - PUBLISH_ALLOWED_ORIGINS=http://localhost:1337,https://localhost:1338
       - DEMO=1
+      - JWT_KEY=!ChangeMe!
+      - PUBLISH_ALLOWED_ORIGINS=http://localhost:1337,https://localhost:1338
     labels:
       - traefik.http.routers.mercure.rule=Host(`mercure.domain.com`)
 
   client:
-    image: ${CONTAINER_REGISTRY_BASE}/client
     build:
-      context: ../api-platform-2.4.6/client
+      context: ../api-platform-2.5.0/client
+      target: api_platform_client_development
       cache_from:
-        - ${CONTAINER_REGISTRY_BASE}/client
-    env_file:
-      - ../api-platform-2.4.6/client/.env
+        - ${CLIENT_IMAGE:-quay.io/api-platform/client}
+    image: ${CLIENT_IMAGE:-quay.io/api-platform/client}
+    environment:
+      - API_PLATFORM_CLIENT_GENERATOR_ENTRYPOINT=http://api
+      - API_PLATFORM_CLIENT_GENERATOR_OUTPUT=src
+      - REACT_APP_API_ENTRYPOINT=http://api.domain.com
     volumes:
-      - ../api-platform-2.4.6/client:/usr/src/client:rw,cached
-      - ../api-platform-2.4.6/client/node_modules:/usr/src/client/node_modules
-    expose:
-      - 3000
+      - ../api-platform-2.5.0/client:/usr/src/client:rw,cached
     labels:
-      - traefik.http.routers.client.rule=Host(`domain.com`)
+      - traefik.http.routers.client.rule=Host(`domain.com`, `www.domain.com`)
 
   admin:
-    image: ${CONTAINER_REGISTRY_BASE}/admin
     build:
-      context: ../api-platform-2.4.6/admin
+      context: ../api-platform-2.5.0/admin
+      target: api_platform_admin_development
       cache_from:
-        - ${CONTAINER_REGISTRY_BASE}/admin
+        - ${ADMIN_IMAGE:-quay.io/api-platform/admin}
+    environment:
+      - REACT_APP_API_ENTRYPOINT=http://api.domain.com
+    image: ${ADMIN_IMAGE:-quay.io/api-platform/admin}
     volumes:
-      - ../api-platform-2.4.6/admin:/usr/src/admin:rw,cached
-      - ../api-platform-2.4.6/admin/node_modules:/usr/src/admin/node_modules
-    expose:
-      - 3000
+      - ../api-platform-2.5.0/admin:/usr/src/admin:rw,cached
     labels:
       - traefik.http.routers.admin.rule=Host(`admin.domain.com`)
 

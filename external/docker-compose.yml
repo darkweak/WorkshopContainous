@@ -3,10 +3,19 @@ version: '3.4'
 services:
   traefik:
     image: traefik:v2.0
-    command: --providers.docker
+    command: --api.insecure --providers.docker
     ports:
       - "80:80"
       - "443:443"
+      - "8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    networks: ${NETWORKS}
+    networks:
+      - api_platform_multiple_1
+      - api_platform_multiple_2
+
+networks:
+  api_platform_multiple_1:
+    external: true
+  api_platform_multiple_2:
+    external: true

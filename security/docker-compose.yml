@@ -1,122 +1,114 @@
 version: '3.4'
 
-x-cache:
-  &cache
-  cache_from:
-    - ${CONTAINER_REGISTRY_BASE}/php
-    - ${CONTAINER_REGISTRY_BASE}/nginx
-    - ${CONTAINER_REGISTRY_BASE}/varnish
+x-cache-from:
+  - &api-cache-from
+    cache_from:
+      - ${NGINX_IMAGE:-quay.io/api-platform/nginx}
+      - ${PHP_IMAGE:-quay.io/api-platform/php}
+
+x-react-env:
+  - &react-env
+    environment:
+      - REACT_APP_API_ENTRYPOINT=${HTTP_OR_SSL}api.${DOMAIN_NAME}
 
 x-networks: &networks
   networks:
-    api_platform_1:
-      external: true
-
-x-react-env: &react-env
-  environment:
-    - REACT_APP_API_ENTRYPOINT=${HTTP_OR_SSL}${API_DOMAIN}
+    - api_platform_multiple_1
 
 services:
   php:
-    image: ${CONTAINER_REGISTRY_BASE}/php
     build:
-      context: ${base_app}/api
+      context: ${FOLDER_LOCATION}/api
       target: api_platform_php
-      <<: *cache
+      <<: *api-cache-from
+    image: ${PHP_IMAGE:-quay.io/api-platform/php}
     depends_on:
       - db
     environment:
       - APP_ENV=${APP_ENV}
-      - TRUSTED_HOSTS=^(((${SUBDOMAINS_LIST}\.)?${DOMAINS})|api)$$
-      - CORS_ALLOW_ORIGIN=^((${HTTP_OR_SSL}(${SUBDOMAINS_LIST}.)?${DOMAINS})|api)$$
-      - DATABASE_URL=postgres://${DB_USER}:${DB_PASS}@db/${DB_NAME}
+      - TRUSTED_HOSTS=^((${SUBDOMAINS_LIST}\.)?${DOMAIN_NAME})$$
+      - CORS_ALLOW_ORIGIN=^(${HTTP_OR_SSL}(${SUBDOMAINS_LIST}.)?${DOMAIN_NAME})$$
+      - DATABASE_URL=postgres://${DATABASE_USER}:${DATABASE_PASS}@db/${DATABASE_NAME}
     volumes:
-      - ${base_app}/api:/srv/api:rw,cached
+      - ${FOLDER_LOCATION}/api:/srv/api:rw,cached
+      - ${FOLDER_LOCATION}/api/docker/php/conf.d/api-platform.dev.ini/:/usr/local/etc/php/conf.d/api-platform.ini
     <<: *networks
 
   api:
-    image: ${CONTAINER_REGISTRY_BASE}/nginx
     build:
-      context: ${base_app}/api
+      context: ${FOLDER_LOCATION}/api
       target: api_platform_nginx
-      <<: *cache
+      <<: *api-cache-from
+    image: ${NGINX_IMAGE:-quay.io/api-platform/nginx}
     depends_on:
       - php
     volumes:
-      - ${base_app}/api/public:/srv/api/public:ro
+      - ${FOLDER_LOCATION}/api/public:/srv/api/public:ro
     labels:
-      - traefik.http.routers.api.rule=HostRegexp(`api.{domains:${DOMAINS}}`)
-    <<: *networks
-
-  cache-proxy:
-    image: ${CONTAINER_REGISTRY_BASE}/varnish
-    build:
-      context: ${base_app}/api
-      target: api_platform_varnish
-      <<: *cache
-    depends_on:
-      - api
-    volumes:
-      - ${base_app}/api/docker/varnish/conf:/usr/local/etc/varnish:ro
-    tmpfs:
-      - /usr/local/var/varnish:exec
-    labels:
-      - traefik.http.routers.cache-proxy.rule=HostRegexp(`cache.{domains:${DOMAINS}}`)
+      - traefik.http.routers.api-${APP_FOLDER}.rule=Host(`api.${DOMAIN_NAME}`)
     <<: *networks
 
   db:
     image: postgres:10-alpine
     environment:
-      - POSTGRES_DB=${DB_NAME}
-      - POSTGRES_USER=${DB_USER}
-      - POSTGRES_PASSWORD=${DB_PASS}
+      - POSTGRES_DB=${DATABASE_NAME}
+      - POSTGRES_PASSWORD=${DATABASE_PASS}
+      - POSTGRES_USER=${DATABASE_USER}
     volumes:
       - db-data:/var/lib/postgresql/data:rw
+    labels:
+      - traefik.http.routers.db-${APP_FOLDER}.rule=Host(`db.${DOMAIN_NAME}`)
+    <<: *networks
+
+  mercure:
+    image: dunglas/mercure
+    environment:
+      - ALLOW_ANONYMOUS=1
+      - CORS_ALLOWED_ORIGINS=${HTTP_OR_SSL}(${SUBDOMAINS_LIST}\.)?${DOMAIN_NAME}
+      - DEMO=1
+      - JWT_KEY=!ChangeMe!
+      - PUBLISH_ALLOWED_ORIGINS=${HTTP_OR_SSL}mercure.${DOMAIN_NAME}
+    labels:
+      - traefik.http.routers.mercure-${APP_FOLDER}.rule=Host(`mercure.${DOMAIN_NAME}`)
     <<: *networks
 
   client:
-    image: ${CONTAINER_REGISTRY_BASE}/client
     build:
-      context: ${base_app}/client
+      context: ${FOLDER_LOCATION}/client
+      target: api_platform_client_development
       cache_from:
-        - ${CONTAINER_REGISTRY_BASE}/client
-    volumes:
-      - ${base_app}/client:/usr/src/client:rw,cached
-      - ${base_app}/client/node_modules:/usr/src/client/node_modules
-    expose:
-      - 3000
-    labels:
-      - traefik.http.routers.client.rule=HostRegexp(`{subdomains:(www.)?}{domains:${DOMAINS}}`)
-      - traefik.http.services.client.loadbalancer.server.port=3000
-    <<: *networks
+        - ${CLIENT_IMAGE:-quay.io/api-platform/client}
+    image: ${CLIENT_IMAGE:-quay.io/api-platform/client}
     <<: *react-env
-
+    volumes:
+      - ${FOLDER_LOCATION}/client:/usr/src/client:rw,cached
+    labels:
+      - traefik.http.routers.client-${APP_FOLDER}.rule=HostRegexp(`{subdomains:(www.)?}${DOMAIN_NAME}`)
+    <<: *networks
 
   admin:
-    image: ${CONTAINER_REGISTRY_BASE}/admin
     build:
-      context: ${base_app}/admin
+      context: ${FOLDER_LOCATION}/admin
+      target: api_platform_admin_development
       cache_from:
-        - ${CONTAINER_REGISTRY_BASE}/admin
-    volumes:
-      - ${base_app}/admin:/usr/src/admin:rw,cached
-      - ${base_app}/admin/node_modules:/usr/src/admin/node_modules
-    expose:
-      - 3000
-    labels:
-      - traefik.http.routers.admin.rule=Host(`admin.${domain_name}`)
-      - traefik.http.services.admin.loadbalancer.server.port=3000
-    <<: *networks
+        - ${ADMIN_IMAGE:-quay.io/api-platform/admin}
     <<: *react-env
+    image: ${ADMIN_IMAGE:-quay.io/api-platform/admin}
+    volumes:
+      - ${FOLDER_LOCATION}/admin:/usr/src/admin:rw,cached
+    labels:
+      - traefik.http.routers.admin-${APP_FOLDER}.rule=Host(`admin.${DOMAIN_NAME}`)
+    <<: *networks
 
   whoami:
     image: containous/whoami
     labels:
-      - traefik.http.routers.admin.rule=HostRegexp(`whoami.{domains:${DOMAINS}}`)
+      - traefik.http.routers.whoami.rule=Host(`whoami.${DOMAIN_NAME}`)
+    <<: *networks
 
 volumes:
   db-data: {}
 
 networks:
-  api_platform_1:
+  api_platform_multiple_1:
     external: true

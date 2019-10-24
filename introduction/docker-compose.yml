@@ -1,114 +1,116 @@
 version: '3.4'
 
-x-cache:
-  &cache
-  cache_from:
-    - ${CONTAINER_REGISTRY_BASE}/php
-    - ${CONTAINER_REGISTRY_BASE}/nginx
-    - ${CONTAINER_REGISTRY_BASE}/varnish
+x-cache-from:
+  - &api-cache-from
+    cache_from:
+      - ${NGINX_IMAGE:-quay.io/api-platform/nginx}
+      - ${PHP_IMAGE:-quay.io/api-platform/php}
 
 services:
   php:
-    image: ${CONTAINER_REGISTRY_BASE}/php
     build:
-      context: ../api-platform-2.4.6/api
+      context: ../api-platform-2.5.0/api
       target: api_platform_php
-      <<: *cache
+      <<: *api-cache-from
+    image: ${PHP_IMAGE:-quay.io/api-platform/php}
     depends_on:
       - db
     volumes:
-      - ../api-platform-2.4.6/api:/srv/api:rw,cached
+      - ../api-platform-2.5.0/api:/srv/api:rw,cached
+      - ../api-platform-2.5.0/api/docker/php/conf.d/api-platform.dev.ini/:/usr/local/etc/php/conf.d/api-platform.ini
 
   api:
-    image: ${CONTAINER_REGISTRY_BASE}/nginx
     build:
-      context: ../api-platform-2.4.6/api
+      context: ../api-platform-2.5.0/api
       target: api_platform_nginx
-      <<: *cache
+      <<: *api-cache-from
+    image: ${NGINX_IMAGE:-quay.io/api-platform/nginx}
     depends_on:
       - php
     volumes:
-      - ../api-platform-2.4.6/api/public:/srv/api/public:ro
+      - ../api-platform-2.5.0/api/public:/srv/api/public:ro
     ports:
-      - "8080:80"
-
-  cache-proxy:
-    image: ${CONTAINER_REGISTRY_BASE}/varnish
-    build:
-      context: ../api-platform-2.4.6/api
-      target: api_platform_varnish
-      <<: *cache
-    depends_on:
-      - api
-    volumes:
-      - ../api-platform-2.4.6/api/docker/varnish/conf:/usr/local/etc/varnish:ro
-    tmpfs:
-      - /usr/local/var/varnish:exec
-    ports:
-      - "8081:80"
+      - target: 80
+        published: 8080
+        protocol: tcp
 
   db:
     image: postgres:10-alpine
     environment:
       - POSTGRES_DB=api
-      - POSTGRES_USER=api-platform
       - POSTGRES_PASSWORD=!ChangeMe!
+      - POSTGRES_USER=api-platform
     volumes:
       - db-data:/var/lib/postgresql/data:rw
     ports:
-      - "5432:5432"
+      - target: 5432
+        published: 5432
+        protocol: tcp
 
   mercure:
     image: dunglas/mercure
     environment:
-      - JWT_KEY=!ChangeMe!
       - ALLOW_ANONYMOUS=1
       - CORS_ALLOWED_ORIGINS=*
-      - PUBLISH_ALLOWED_ORIGINS=http://localhost:1337,https://localhost:1338
       - DEMO=1
+      - JWT_KEY=!ChangeMe!
+      - PUBLISH_ALLOWED_ORIGINS=http://localhost:1337,https://localhost:1338
     ports:
-      - "1337:80"
+      - target: 80
+        published: 1337
+        protocol: tcp
 
   client:
-    image: ${CONTAINER_REGISTRY_BASE}/client
     build:
-      context: ../api-platform-2.4.6/client
+      context: ../api-platform-2.5.0/client
+      target: api_platform_client_development
       cache_from:
-        - ${CONTAINER_REGISTRY_BASE}/client
-    env_file:
-      - ../api-platform-2.4.6/client/.env
+        - ${CLIENT_IMAGE:-quay.io/api-platform/client}
+    image: ${CLIENT_IMAGE:-quay.io/api-platform/client}
+    environment:
+      - API_PLATFORM_CLIENT_GENERATOR_ENTRYPOINT=http://api
+      - API_PLATFORM_CLIENT_GENERATOR_OUTPUT=src
     volumes:
-      - ../api-platform-2.4.6/client:/usr/src/client:rw,cached
-      - ../api-platform-2.4.6/client/node_modules:/usr/src/client/node_modules
+      - ../api-platform-2.5.0/client:/usr/src/client:rw,cached
     ports:
-      - "80:3000"
+      - target: 3000
+        published: 80
+        protocol: tcp
 
   admin:
-    image: ${CONTAINER_REGISTRY_BASE}/admin
     build:
-      context: ../api-platform-2.4.6/admin
+      context: ../api-platform-2.5.0/admin
+      target: api_platform_admin_development
       cache_from:
-        - ${CONTAINER_REGISTRY_BASE}/admin
+        - ${ADMIN_IMAGE:-quay.io/api-platform/admin}
+    image: ${ADMIN_IMAGE:-quay.io/api-platform/admin}
     volumes:
-      - ../api-platform-2.4.6/admin:/usr/src/admin:rw,cached
-      - ../api-platform-2.4.6/admin/node_modules:/usr/src/admin/node_modules
+      - ../api-platform-2.5.0/admin:/usr/src/admin:rw,cached
     ports:
-      - "81:3000"
+      - target: 3000
+        published: 81
+        protocol: tcp
 
   h2-proxy:
     build:
-      context: ../api-platform-2.4.6/h2-proxy
+      context: ../api-platform-2.5.0/h2-proxy
     depends_on:
       - client
       - admin
       - api
-      - cache-proxy
-      - mercure
     ports:
-      - "443:443"
-      - "444:444"
-      - "8443:8443"
-      - "8444:8444"
+      - target: 443
+        published: 443
+        protocol: tcp
+      - target: 444
+        published: 444
+        protocol: tcp
+      - target: 8443
+        published: 8443
+        protocol: tcp
+      - target: 1338
+        published: 1338
+        protocol: tcp
 
 volumes:
   db-data: {}
