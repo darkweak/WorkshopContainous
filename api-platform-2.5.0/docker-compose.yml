@@ -9,26 +9,28 @@ x-cache-from:
 services:
   php:
     build:
-      context: ../api-platform-2.5.0/api
+      context: ./api
       target: api_platform_php
       <<: *api-cache-from
     image: ${PHP_IMAGE:-quay.io/api-platform/php}
     depends_on:
       - db
     volumes:
-      - ../api-platform-2.5.0/api:/srv/api:rw,cached
-      - ../api-platform-2.5.0/api/docker/php/conf.d/api-platform.dev.ini/:/usr/local/etc/php/conf.d/api-platform.ini
+      - ./api:/srv/api:rw,cached
+      - ./api/docker/php/conf.d/api-platform.dev.ini/:/usr/local/etc/php/conf.d/api-platform.ini
+      # if you develop on Linux, you may use a bind-mounted host directory instead
+      # - ./api/var:/srv/api/var:rw
 
   api:
     build:
-      context: ../api-platform-2.5.0/api
+      context: ./api
       target: api_platform_nginx
       <<: *api-cache-from
     image: ${NGINX_IMAGE:-quay.io/api-platform/nginx}
     depends_on:
       - php
     volumes:
-      - ../api-platform-2.5.0/api/public:/srv/api/public:ro
+      - ./api/public:/srv/api/public:ro
     ports:
       - target: 80
         published: 8080
@@ -42,6 +44,8 @@ services:
       - POSTGRES_USER=api-platform
     volumes:
       - db-data:/var/lib/postgresql/data:rw
+      # you may use a bind-mounted host directory instead, so that it is harder to accidentally remove the volume and lose all your data!
+      # - ./api/docker/db/data:/var/lib/postgresql/data:rw
     ports:
       - target: 5432
         published: 5432
@@ -54,7 +58,7 @@ services:
       - CORS_ALLOWED_ORIGINS=*
       - DEMO=1
       - JWT_KEY=!ChangeMe!
-      - PUBLISH_ALLOWED_ORIGINS=http://localhost:1337,https://localhost:1338
+      - PUBLISH_ALLOWED_ORIGINS=http://localhost:1337,https://localhost:1338 # required for publishing from demo page
     ports:
       - target: 80
         published: 1337
@@ -62,7 +66,7 @@ services:
 
   client:
     build:
-      context: ../api-platform-2.5.0/client
+      context: ./client
       target: api_platform_client_development
       cache_from:
         - ${CLIENT_IMAGE:-quay.io/api-platform/client}
@@ -71,7 +75,7 @@ services:
       - API_PLATFORM_CLIENT_GENERATOR_ENTRYPOINT=http://api
       - API_PLATFORM_CLIENT_GENERATOR_OUTPUT=src
     volumes:
-      - ../api-platform-2.5.0/client:/usr/src/client:rw,cached
+      - ./client:/usr/src/client:rw,cached
     ports:
       - target: 3000
         published: 80
@@ -79,21 +83,22 @@ services:
 
   admin:
     build:
-      context: ../api-platform-2.5.0/admin
+      context: ./admin
       target: api_platform_admin_development
       cache_from:
         - ${ADMIN_IMAGE:-quay.io/api-platform/admin}
     image: ${ADMIN_IMAGE:-quay.io/api-platform/admin}
     volumes:
-      - ../api-platform-2.5.0/admin:/usr/src/admin:rw,cached
+      - ./admin:/usr/src/admin:rw,cached
     ports:
       - target: 3000
         published: 81
         protocol: tcp
 
   h2-proxy:
+    # do not use in production!
     build:
-      context: ../api-platform-2.5.0/h2-proxy
+      context: ./h2-proxy
     depends_on:
       - client
       - admin
